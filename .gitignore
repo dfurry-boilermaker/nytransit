@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.vite/
+.vercel/
+
+# large, regenerable raw inputs (production uses the baked public/data/*.json)
+data/raw/
+
+# local scratch
+_*.mjs

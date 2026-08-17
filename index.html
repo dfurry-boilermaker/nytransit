@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>NYTransit · NYC in 3D — subways at their real depths</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <div id="loader"><div class="spin"></div><span>Building New York…</span></div>
+
+    <header id="titlebar">
+      <h1>NY<span>Transit</span></h1>
+      <p>The subway at its real depth · from the harbor</p>
+    </header>
+
+    <section id="legend">
+      <h2>Elevation vs sea level</h2>
+      <div class="scale"><span>+150 m</span><div class="bar"></div><span>−40 m</span></div>
+      <ul class="depthkey">
+        <li><i style="background:#ffd24a"></i> elevated / above ground</li>
+        <li><i style="background:#6fe0a6"></i> shallow (cut &amp; cover)</li>
+        <li><i style="background:#4aa3ff"></i> deep bored</li>
+        <li><i style="background:#c56bff"></i> under-river tube</li>
+      </ul>
+    </section>
+
+    <div id="tooltip" hidden></div>
+
+    <!-- compact, responsive control bar (desktop + mobile) -->
+    <nav id="dock">
+      <div class="views">
+        <button id="view-harbor" class="active">Harbor</button>
+        <button id="view-top">Top</button>
+        <button id="view-cut">Cross-section</button>
+      </div>
+      <div class="depth">
+        <label for="ve">Depth <b id="ve-val">50×</b></label>
+        <input type="range" id="ve" min="1" max="100" step="1" value="50" />
+      </div>
+      <button id="about-btn" class="linklike">about</button>
+    </nav>
+
+    <div id="about" hidden>
+      <div class="card">
+        <button id="about-close" class="x">×</button>
+        <h3>About this map</h3>
+        <p id="about-body"></p>
+        <ul id="about-sources"></ul>
+        <p class="fine">Depths, ground elevations and building heights are approximate. A visualization, not an engineering reference.</p>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
