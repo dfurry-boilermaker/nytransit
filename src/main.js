@@ -289,10 +289,9 @@ function applyVE(v) {
 // ---- framing ----
 function setActive(id) { for (const b of document.querySelectorAll('#dock .views button')) b.classList.toggle('active', b.id === id); }
 function frameStatue() {
-  const [sx, sz] = META.camera.statue;
-  const [tx, , tz] = META.camera.target;
-  controls.target.set(tx, 220, tz);
-  camera.position.set(sx - 900, 950, sz + 1700);
+  const [cx, , cz] = META.camera.center; // middle of Manhattan
+  controls.target.set(cx, 350, cz);
+  camera.position.set(cx - 5500, 4300, cz + 7800); // from the harbor (SW), elevated
   controls.update();
   setActive('view-harbor');
 }
@@ -304,21 +303,20 @@ function frameTop() {
   setActive('view-top');
 }
 function frameCut() {
-  const [tx, , tz] = META.camera.target;
-  controls.target.set(tx, -3 * VE, tz + 2500);
-  camera.position.set(tx + 9000, 700, tz + 2500);
+  const [cx, , cz] = META.camera.center;
+  controls.target.set(cx, -3 * VE, cz + 1500);
+  camera.position.set(cx + 9000, 700, cz + 1500);
   controls.update();
   setActive('view-cut');
 }
 // Intro fly: begins high above the harbor, descends below the waterline as the
 // network finishes drawing, ending on the plunging under-river tubes.
 function setupIntroCam() {
-  const [sx, sz] = META.camera.statue;
-  const [tx, , tz] = META.camera.target;
-  introCam.a0.set(sx - 1600, 9200, sz + 5200);   // camera: high aerial
-  introCam.a1.set(tx, 500, tz);                    // look at the surface
-  introCam.b0.set(tx - 700, -520, tz + 3200);      // camera: below the waterline
-  introCam.b1.set(tx, 40, tz + 800);               // look up at the tubes / skyline
+  const [cx, , cz] = META.camera.center;           // middle of Manhattan
+  introCam.a0.set(cx - 6500, 9600, cz + 9500);     // camera: high aerial (SW)
+  introCam.a1.set(cx, 500, cz);                    // look at mid-Manhattan
+  introCam.b0.set(cx - 700, -520, cz + 3400);      // camera: below the waterline
+  introCam.b1.set(cx, 60, cz + 1400);              // look up at the tubes / skyline
   introCam.active = true;
   camera.position.copy(introCam.a0);
   camera.lookAt(introCam.a1);
