@@ -79,6 +79,9 @@ let META = null, stationData = [], stationsPts = null, stationReveal = null;
 const uTime = { value: 0 };
 let animStart = null;
 let introEls = null, lastYear = -1, lastPhase = '';
+// intro camera fly: high above ground -> down below the waterline as lines finish
+const introCam = { active: true, a0: new THREE.Vector3(), a1: new THREE.Vector3(), b0: new THREE.Vector3(), b1: new THREE.Vector3() };
+const _tmpT = new THREE.Vector3();
 
 // ===========================================================================
 async function boot() {
@@ -102,7 +105,7 @@ async function boot() {
   setupAbout(data.meta);
   setupUI();
   setupPicking();
-  frameStatue();
+  setupIntroCam();
 
   document.getElementById('loader').classList.add('hide');
   animStart = performance.now();
@@ -112,7 +115,7 @@ async function boot() {
 // ---- water ----
 function buildWater() {
   const geo = new THREE.PlaneGeometry(180000, 180000);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x1a7fa0, metalness: 0.25, roughness: 0.22, transparent: true, opacity: 0.5, depthWrite: false });
+  const mat = new THREE.MeshStandardMaterial({ color: 0x0e6f97, metalness: 0.35, roughness: 0.16, transparent: true, opacity: 0.68, depthWrite: false });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
   m.renderOrder = -3;
@@ -158,8 +161,16 @@ function buildTerrain(t) {
 function buildCoastline(boroughs) {
   const g = new THREE.Group();
   for (const b of boroughs) for (const ring of b.rings) {
-    const pts = ring.map(([x, z]) => new THREE.Vector3(x, 0.4, z));
-    g.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x8fc4ff, transparent: true, opacity: 0.4 })));
+    if (ring.length < 2) continue;
+    const flat = [];
+    for (const [x, z] of ring) flat.push(x, 1.0, z);
+    flat.push(ring[0][0], 1.0, ring[0][1]); // close the loop
+    const geo = new LineGeometry();
+    geo.setPositions(flat);
+    const mat = new LineMaterial({ color: 0xeaf6ff, linewidth: 2.4, transparent: true, opacity: 0.92, worldUnits: false });
+    mat.resolution.copy(resolution);
+    lineMaterials.push(mat);
+    g.add(new Line2(geo, mat));
   }
   aboveGroup.add(g);
 }
@@ -182,13 +193,30 @@ function buildBuildings(list) {
   aboveGroup.add(new THREE.Mesh(merged, mat));
 }
 
+// Chaikin corner-cutting: rounds hard corners into smooth, runnable curves.
+function chaikin(pts, iters) {
+  let p = pts;
+  for (let k = 0; k < iters; k++) {
+    const out = [p[0]];
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = p[i], b = p[i + 1];
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25, a[2] * 0.75 + b[2] * 0.25]);
+      out.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75, a[2] * 0.25 + b[2] * 0.75]);
+    }
+    out.push(p[p.length - 1]);
+    p = out;
+  }
+  return p;
+}
+
 // ---- lines (positions baked with the vy() transform) ----
 function bakePositions(raw) {
   const out = new Array(raw.length * 3);
   for (let i = 0; i < raw.length; i++) { out[i * 3] = raw[i][0]; out[i * 3 + 1] = vy(raw[i][1]); out[i * 3 + 2] = raw[i][2]; }
   return out;
 }
-function makeLine(raw, color, width, opacity, dashed, year) {
+function makeLine(rawIn, color, width, opacity, dashed, year) {
+  const raw = rawIn.length >= 3 ? chaikin(rawIn, 3) : rawIn; // smooth hard corners
   const geo = new LineGeometry();
   geo.setPositions(bakePositions(raw));
   const mat = new LineMaterial({ color: new THREE.Color(color).getHex(), linewidth: width, transparent: true, opacity, worldUnits: false, dashed: !!dashed, dashSize: 55, gapSize: 35 });
@@ -282,6 +310,33 @@ function frameCut() {
   controls.update();
   setActive('view-cut');
 }
+// Intro fly: begins high above the harbor, descends below the waterline as the
+// network finishes drawing, ending on the plunging under-river tubes.
+function setupIntroCam() {
+  const [sx, sz] = META.camera.statue;
+  const [tx, , tz] = META.camera.target;
+  introCam.a0.set(sx - 1600, 9200, sz + 5200);   // camera: high aerial
+  introCam.a1.set(tx, 500, tz);                    // look at the surface
+  introCam.b0.set(tx - 700, -520, tz + 3200);      // camera: below the waterline
+  introCam.b1.set(tx, 40, tz + 800);               // look up at the tubes / skyline
+  introCam.active = true;
+  camera.position.copy(introCam.a0);
+  camera.lookAt(introCam.a1);
+  controls.enabled = false;
+  setActive('view-harbor');
+}
+function finishIntro() {
+  if (animDone) return;
+  for (const d of depthLines) d.line.geometry.instanceCount = d.segs;
+  uTime.value = 1e6;
+  animDone = true;
+  introCam.active = false;
+  camera.position.copy(introCam.b0);
+  controls.target.copy(introCam.b1);
+  controls.enabled = true;
+  controls.update();
+  hideIntro();
+}
 
 function setupUI() {
   const ve = document.getElementById('ve');
@@ -368,16 +423,21 @@ function animate() {
       d.line.geometry.instanceCount = Math.ceil(p * d.segs);
     }
     updateIntro(t);
-    if (t > GROW_SPAN + GROW_DUR + 1.2) {
-      for (const d of depthLines) d.line.geometry.instanceCount = d.segs;
-      uTime.value = 1e6;
-      animDone = true;
-      hideIntro();
+    if (introCam.active) {
+      const p = Math.min(1, t / (GROW_SPAN + GROW_DUR));
+      const e = p * p * (3 - 2 * p); // smoothstep
+      camera.position.lerpVectors(introCam.a0, introCam.b0, e);
+      _tmpT.lerpVectors(introCam.a1, introCam.b1, e);
+      camera.lookAt(_tmpT);
     }
+    if (t > GROW_SPAN + GROW_DUR + 0.4) finishIntro();
   }
-  controls.update();
+  if (!introCam.active) controls.update(); // don't let OrbitControls fight the fly
   renderer.render(scene, camera);
 }
+// let the user skip the intro with any interaction
+['pointerdown', 'wheel', 'touchstart', 'keydown'].forEach((ev) =>
+  addEventListener(ev, () => { if (!animDone) finishIntro(); }, { passive: true }));
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
