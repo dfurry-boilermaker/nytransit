@@ -20,6 +20,11 @@ appear first, then the BMT, then the IND, over about ten seconds.
   station's real structure depth and diving into the under-river tubes.
 - **PATH** — the trans-Hudson tubes to Jersey City, Hoboken and Newark
   (dashed cyan), descending ~97 ft below sea level mid-river.
+- **Bridges & the Roosevelt Island Tram** — the East River, Harlem River and
+  Hudson crossings shown as elevated arches above the water.
+- **Solid earth + bathymetry** — the terrain is a translucent earth volume with
+  river banks and beds, so you can watch the tunnels bore through the ground and
+  under the riverbeds.
 - **Stations** — colored by their elevation vs. sea level. Hover (or tap) for
   lines, structure, depth below street, and elevation.
 - **Buildings** — real footprints with **real roof heights** (NYC Open Data),

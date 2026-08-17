@@ -91,7 +91,7 @@ for (let j = 0; j < H; j++) {
   for (let i = 0; i < W; i++) {
     const x = xMin + ((xMax - xMin) * i) / (W - 1);
     let e = elevAt(toLon(x), toLat(z));
-    if (e < -12) e = -12; // clamp bathymetry noise
+    if (e < -40) e = -40; // keep river/harbor bathymetry, clamp deep noise
     elev[j * W + i] = Math.round(e * 10) / 10;
     if (e < mn) mn = e; if (e > mx) mx = e;
   }

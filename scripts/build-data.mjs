@@ -422,6 +422,40 @@ for (const key of Object.keys(PATH_STATIONS)) {
   });
 }
 
+// --- Bridges & the Roosevelt Island Tram (elevated crossings) ---------------
+// Hand-built from approximate coordinates; rendered as gentle arches above the
+// water so you can see how the boroughs connect over the rivers.
+function archLine(pts, deck, endLow) {
+  const N = 20;
+  const out = [];
+  for (let k = 0; k <= N; k++) {
+    const s = k / N;
+    const f = s * (pts.length - 1);
+    const i = Math.min(pts.length - 2, Math.floor(f));
+    const tt = f - i;
+    const lon = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * tt;
+    const lat = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * tt;
+    const p = project(lon, lat);
+    const y = endLow + (deck - endLow) * Math.sin(Math.PI * s);
+    out.push([+p.x.toFixed(1), +y.toFixed(1), +p.z.toFixed(1)]);
+  }
+  return out;
+}
+const BRIDGE = '#d8cdb2';
+const CROSSING_DEFS = [
+  { id: 'br-bk', name: 'Brooklyn Bridge', color: BRIDGE, deck: 40, pts: [[-74.0006, 40.7057], [-73.9952, 40.7042], [-73.9903, 40.7003]] },
+  { id: 'br-mn', name: 'Manhattan Bridge', color: BRIDGE, deck: 41, pts: [[-73.9903, 40.7108], [-73.9884, 40.7053], [-73.9860, 40.6998]] },
+  { id: 'br-wb', name: 'Williamsburg Bridge', color: BRIDGE, deck: 43, pts: [[-73.9800, 40.7155], [-73.9710, 40.7143], [-73.9619, 40.7128]] },
+  { id: 'br-qb', name: 'Queensboro (59 St) Bridge', color: BRIDGE, deck: 42, pts: [[-73.9625, 40.7577], [-73.9515, 40.7570], [-73.9400, 40.7566]] },
+  { id: 'br-rfk', name: 'RFK / Triborough Bridge', color: BRIDGE, deck: 43, pts: [[-73.9333, 40.8006], [-73.9280, 40.7975], [-73.9225, 40.7958]] },
+  { id: 'br-gwb', name: 'George Washington Bridge', color: BRIDGE, deck: 65, pts: [[-73.9470, 40.8517], [-73.9600, 40.8517], [-73.9730, 40.8517]] },
+  { id: 'br-vz', name: 'Verrazzano-Narrows Bridge', color: BRIDGE, deck: 70, pts: [[-74.0347, 40.6066], [-74.0400, 40.6040], [-74.0455, 40.6015]] },
+  { id: 'br-hg', name: 'Hell Gate Bridge', color: BRIDGE, deck: 45, pts: [[-73.9245, 40.7830], [-73.9210, 40.7862], [-73.9180, 40.7895]] },
+];
+const crossings = CROSSING_DEFS.map((b) => ({ id: b.id, name: b.name, color: b.color, points: archLine(b.pts, b.deck, 8) }));
+// Roosevelt Island Tram — aerial cable car, 2 Av/60 St ⇄ Roosevelt Island.
+crossings.push({ id: 'tram', name: 'Roosevelt Island Tram', color: '#e23b32', dashed: true, tram: true, points: archLine([[-73.9636, 40.7614], [-73.9575, 40.7607], [-73.9506, 40.7601]], 55, 14) });
+
 // --- Camera presets ---------------------------------------------------------
 const statue = project(-74.0445, 40.6892); // Statue of Liberty
 const battery = project(-74.0134, 40.7033); // Battery / Lower Manhattan (the view target)
@@ -459,6 +493,7 @@ const out = {
   stations,
   buses,
   path,
+  crossings,
 };
 
 writeFileSync(OUT, JSON.stringify(out));

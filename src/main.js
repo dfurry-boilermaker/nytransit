@@ -99,6 +99,7 @@ async function boot() {
   buildSubway(data.routes);
   buildPath(data.path || []);
   buildBuses(data.buses);
+  buildCrossings(data.crossings || []);
   buildStations(data.stations);
 
   introEls = { root: document.getElementById('intro'), phase: document.getElementById('intro-phase'), year: document.getElementById('intro-year'), fill: document.getElementById('intro-fill') };
@@ -123,23 +124,27 @@ function buildWater() {
 }
 
 // ---- DEM terrain ----
+const EARTH_BASE = -45;   // m below sea level: bottom of the earth block
+const BATHY_CLAMP = -20;  // limit how deep the riverbeds are drawn
+let earthTop = null, earthBody = null; // meshes rebuilt on depth change
+
 function buildTerrain(t) {
   const { xMin, xMax, zMin, zMax, W, H, elev } = t;
+
+  // ---- top surface (grayscale stepped-contour relief, with bathymetry) ----
   const geo = new THREE.PlaneGeometry(xMax - xMin, zMax - zMin, W - 1, H - 1);
   const pos = geo.attributes.position;
   const aElev = new Float32Array(pos.count);
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const vi = j * W + i, e = elev[vi];
-    pos.setZ(vi, e < 1 ? -1.2 : e);
+    pos.setZ(vi, vy(Math.max(e, BATHY_CLAMP))); // baked depth transform
     aElev[vi] = e;
   }
   geo.setAttribute('aElev', new THREE.BufferAttribute(aElev, 1));
   geo.rotateX(-Math.PI / 2);
   geo.translate((xMin + xMax) / 2, 0, (zMin + zMax) / 2);
   geo.computeVertexNormals();
-  // Grayscale stepped-contour relief: light = high, dark = low, with contour
-  // lines every few metres so it reads as a topographic model.
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, transparent: true, opacity: 0.66, depthWrite: false, side: THREE.DoubleSide });
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = 'attribute float aElev;\nvarying float vElev;\n' +
       sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vElev = aElev;');
@@ -153,9 +158,58 @@ function buildTerrain(t) {
         grey *= mix(0.58, 1.0, line);
         diffuseColor.rgb = grey;`);
   };
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.renderOrder = -2;
-  aboveGroup.add(mesh);
+  earthTop = new THREE.Mesh(geo, mat);
+  earthTop.renderOrder = -2;
+  earthTop.userData.elev = aElev;
+  scene.add(earthTop);
+
+  // ---- solid earth body: perimeter walls + base, translucent so you can see
+  //      the tunnels boring through the ground and under the riverbeds ----
+  const bidx = [];
+  for (let i = 0; i < W; i++) bidx.push(i);
+  for (let j = 1; j < H; j++) bidx.push(j * W + (W - 1));
+  for (let i = W - 2; i >= 0; i--) bidx.push((H - 1) * W + i);
+  for (let j = H - 2; j >= 1; j--) bidx.push(j * W);
+  const P = pos; // transformed positions (x, vy(elev), z)
+  const positions = [], realY = []; // realY: pre-transform y for rebuilds
+  const baseY = vy(EARTH_BASE);
+  const pushV = (x, y, z, ry) => { positions.push(x, y, z); realY.push(ry); };
+  for (let k = 0; k < bidx.length; k++) {
+    const a = bidx[k], b = bidx[(k + 1) % bidx.length];
+    const ax = P.getX(a), az = P.getZ(a), ay = P.getY(a), ae = Math.max(aElev[a], BATHY_CLAMP);
+    const bx = P.getX(b), bz = P.getZ(b), by = P.getY(b), be = Math.max(aElev[b], BATHY_CLAMP);
+    // quad: topA, topB, baseB, baseA
+    pushV(ax, ay, az, ae); pushV(bx, by, bz, be); pushV(bx, baseY, bz, EARTH_BASE);
+    pushV(ax, ay, az, ae); pushV(bx, baseY, bz, EARTH_BASE); pushV(ax, baseY, az, EARTH_BASE);
+  }
+  // base cap
+  const cs = [[xMin, zMin], [xMax, zMin], [xMax, zMax], [xMin, zMax]];
+  const c = cs.map(([x, z]) => [x, baseY, z]);
+  pushV(c[0][0], baseY, c[0][1], EARTH_BASE); pushV(c[1][0], baseY, c[1][1], EARTH_BASE); pushV(c[2][0], baseY, c[2][1], EARTH_BASE);
+  pushV(c[0][0], baseY, c[0][1], EARTH_BASE); pushV(c[2][0], baseY, c[2][1], EARTH_BASE); pushV(c[3][0], baseY, c[3][1], EARTH_BASE);
+
+  const bgeo = new THREE.BufferGeometry();
+  bgeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  bgeo.setAttribute('realY', new THREE.Float32BufferAttribute(realY.slice(), 1));
+  bgeo.computeVertexNormals();
+  const bmat = new THREE.MeshStandardMaterial({ color: 0x3a3630, roughness: 1, metalness: 0, transparent: true, opacity: 0.34, depthWrite: false, side: THREE.DoubleSide });
+  earthBody = new THREE.Mesh(bgeo, bmat);
+  earthBody.renderOrder = -2.5;
+  scene.add(earthBody);
+}
+
+// recompute the earth's Y when the depth exaggeration changes
+function rebuildEarth() {
+  if (earthTop) {
+    const p = earthTop.geometry.attributes.position, e = earthTop.userData.elev;
+    for (let i = 0; i < e.length; i++) p.setY(i, vy(Math.max(e[i], BATHY_CLAMP)));
+    p.needsUpdate = true;
+  }
+  if (earthBody) {
+    const p = earthBody.geometry.attributes.position, ry = earthBody.geometry.attributes.realY;
+    for (let i = 0; i < ry.count; i++) p.setY(i, vy(ry.getX(i)));
+    p.needsUpdate = true;
+  }
 }
 
 function buildCoastline(boroughs) {
@@ -235,6 +289,22 @@ function buildSubway(routes) { for (const r of routes) if (r.points.length >= 2)
 function buildPath(path) { for (const p of path) if (p.points.length >= 2) makeLine(p.points, '#20c4d6', 3.4, 0.98, true, ROUTE_YEARS[p.id] ?? 1910); }
 function buildBuses(buses) { for (const b of buses) if (b.points.length >= 2) makeLine(b.points, 0xf2f6ff, 1.6, 0.5, false, 1938); }
 
+// Bridges & the Roosevelt Island tram — static elevated spans (always visible).
+function buildCrossings(list) {
+  for (const c of list) {
+    if (!c.points || c.points.length < 2) continue;
+    const raw = c.points.length >= 3 ? chaikin(c.points, 2) : c.points;
+    const geo = new LineGeometry();
+    geo.setPositions(bakePositions(raw));
+    const mat = new LineMaterial({ color: new THREE.Color(c.color).getHex(), linewidth: c.tram ? 2.6 : 3.6, transparent: true, opacity: 0.96, worldUnits: false, dashed: !!c.dashed, dashSize: 45, gapSize: 28 });
+    mat.resolution.copy(resolution);
+    lineMaterials.push(mat);
+    const line = new Line2(geo, mat);
+    if (c.dashed) line.computeLineDistances();
+    scene.add(line);
+  }
+}
+
 // ---- stations ----
 function discTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -272,7 +342,7 @@ function buildStations(stations) {
 }
 
 // ---- vertical exaggeration ----
-function applyVE(v) {
+function applyVE(v, heavy) {
   VE = v;
   for (const d of depthLines) {
     d.line.geometry.setPositions(bakePositions(d.raw));
@@ -283,6 +353,7 @@ function applyVE(v) {
     for (let i = 0; i < stationData.length; i++) p.setY(i, vy(stationData[i].y));
     p.needsUpdate = true;
   }
+  if (heavy) rebuildEarth(); // terrain/earth are heavy — only on slider release
   document.getElementById('ve-val').textContent = v + '×';
 }
 
@@ -339,7 +410,8 @@ function finishIntro() {
 function setupUI() {
   const ve = document.getElementById('ve');
   ve.value = VE;
-  ve.addEventListener('input', () => applyVE(+ve.value));
+  ve.addEventListener('input', () => applyVE(+ve.value, false));
+  ve.addEventListener('change', () => applyVE(+ve.value, true));
   document.getElementById('view-harbor').onclick = frameStatue;
   document.getElementById('view-top').onclick = frameTop;
   document.getElementById('view-cut').onclick = frameCut;
