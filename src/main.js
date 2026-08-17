@@ -80,7 +80,7 @@ const uTime = { value: 0 };
 let animStart = null;
 let introEls = null, lastYear = -1, lastPhase = '';
 // intro camera fly: high above ground -> down below the waterline as lines finish
-const introCam = { active: true, a0: new THREE.Vector3(), a1: new THREE.Vector3(), b0: new THREE.Vector3(), b1: new THREE.Vector3() };
+const introCam = { active: true, a0: new THREE.Vector3(), a1: new THREE.Vector3(), m0: new THREE.Vector3(), m1: new THREE.Vector3(), b0: new THREE.Vector3(), b1: new THREE.Vector3() };
 const _tmpT = new THREE.Vector3();
 
 // ===========================================================================
@@ -296,19 +296,33 @@ function buildSubway(routes) { for (const r of routes) if (r.points.length >= 2)
 function buildPath(path) { for (const p of path) if (p.points.length >= 2) makeLine(p.points, '#20c4d6', 3.4, 0.98, true, ROUTE_YEARS[p.id] ?? 1910); }
 function buildBuses(buses) { for (const b of buses) if (b.points.length >= 2) makeLine(b.points, 0xf2f6ff, 1.6, 0.5, false, 1938); }
 
-// Bridges & the Roosevelt Island tram — static elevated spans (always visible).
+// Bridges & the Roosevelt Island tram — bold elevated spans with towers so they
+// read clearly over the water.
+function addLine(flatPts, color, width, opacity, dashed) {
+  const geo = new LineGeometry();
+  geo.setPositions(flatPts);
+  const mat = new LineMaterial({ color, linewidth: width, transparent: true, opacity, worldUnits: false, dashed: !!dashed, dashSize: 45, gapSize: 28 });
+  mat.resolution.copy(resolution);
+  lineMaterials.push(mat);
+  const line = new Line2(geo, mat);
+  if (dashed) line.computeLineDistances();
+  line.renderOrder = 3;
+  scene.add(line);
+  return line;
+}
 function buildCrossings(list) {
   for (const c of list) {
     if (!c.points || c.points.length < 2) continue;
     const raw = c.points.length >= 3 ? chaikin(c.points, 2) : c.points;
-    const geo = new LineGeometry();
-    geo.setPositions(bakePositions(raw));
-    const mat = new LineMaterial({ color: new THREE.Color(c.color).getHex(), linewidth: c.tram ? 2.6 : 3.6, transparent: true, opacity: 0.96, worldUnits: false, dashed: !!c.dashed, dashSize: 45, gapSize: 28 });
-    mat.resolution.copy(resolution);
-    lineMaterials.push(mat);
-    const line = new Line2(geo, mat);
-    if (c.dashed) line.computeLineDistances();
-    scene.add(line);
+    const col = c.tram ? 0xff5545 : 0xffe08a; // tram red, bridges bright gold
+    addLine(bakePositions(raw), col, c.tram ? 4 : 6.5, 1, c.dashed);
+    if (!c.tram && raw.length > 6) {
+      // suspension towers: verticals rising above the deck at ~1/4 and ~3/4 span
+      for (const s of [0.26, 0.74]) {
+        const pt = raw[Math.floor(s * (raw.length - 1))];
+        addLine([pt[0], vy(pt[1]), pt[2], pt[0], vy(pt[1] + 42), pt[2]], col, 4.5, 1, false);
+      }
+    }
   }
 }
 
@@ -374,9 +388,10 @@ function frameStatue() {
   setActive('view-harbor');
 }
 function frameTop() {
-  const [tx, , tz] = META.camera.center;
-  controls.target.set(tx, 0, tz);
-  camera.position.set(tx + 300, 32000, tz + 1);
+  const [cx, , cz] = META.camera.center;
+  // shift toward the collective centroid so Staten Island fits, and pull up high
+  controls.target.set(cx - 4000, 0, cz + 6000);
+  camera.position.set(cx - 4000, 56000, cz + 6001);
   controls.update();
   setActive('view-top');
 }
@@ -391,10 +406,12 @@ function frameCut() {
 // network finishes drawing, ending on the plunging under-river tubes.
 function setupIntroCam() {
   const [cx, , cz] = META.camera.center;           // middle of Manhattan
-  introCam.a0.set(cx - 6500, 9600, cz + 9500);     // camera: high aerial (SW)
-  introCam.a1.set(cx, 500, cz);                    // look at mid-Manhattan
-  introCam.b0.set(cx - 700, -520, cz + 3400);      // camera: below the waterline
-  introCam.b1.set(cx, 60, cz + 1400);              // look up at the tubes / skyline
+  const [tx, , tz] = META.camera.target;           // lower-Manhattan tip / harbor edge
+  // 3 keyframes: high aerial -> dive underground at the harbor edge (over water,
+  // clear of the buildings) -> drift north under the ground toward Midtown.
+  introCam.a0.set(cx - 6500, 9600, cz + 9500); introCam.a1.set(cx, 500, cz);
+  introCam.m0.set(tx - 2600, -160, tz + 3200); introCam.m1.set(tx, -120, tz);        // at the edge, just underground
+  introCam.b0.set(cx - 2400, -430, cz + 2600); introCam.b1.set(cx, -220, cz);        // under Midtown
   introCam.active = true;
   camera.position.copy(introCam.a0);
   camera.lookAt(introCam.a1);
@@ -503,8 +520,16 @@ function animate() {
     if (introCam.active) {
       const p = Math.min(1, t / (GROW_SPAN + GROW_DUR));
       const e = p * p * (3 - 2 * p); // smoothstep
-      camera.position.lerpVectors(introCam.a0, introCam.b0, e);
-      _tmpT.lerpVectors(introCam.a1, introCam.b1, e);
+      // phase 1: aerial -> harbor edge (descend over water); phase 2: edge -> under Midtown
+      if (e < 0.5) {
+        const q = e / 0.5;
+        camera.position.lerpVectors(introCam.a0, introCam.m0, q);
+        _tmpT.lerpVectors(introCam.a1, introCam.m1, q);
+      } else {
+        const q = (e - 0.5) / 0.5;
+        camera.position.lerpVectors(introCam.m0, introCam.b0, q);
+        _tmpT.lerpVectors(introCam.m1, introCam.b1, q);
+      }
       camera.lookAt(_tmpT);
     }
     if (t > GROW_SPAN + GROW_DUR + 0.4) finishIntro();

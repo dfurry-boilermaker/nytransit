@@ -25,10 +25,10 @@ const toLat = (z) => -z / M_PER_LAT + LAT0;
 const projX = (lon) => (lon - LON0) * M_PER_LON;
 const projZ = (lat) => -(lat - LAT0) * M_PER_LAT;
 
-// Region (lon/lat) — Newark NJ across to eastern Queens; SI up to the Bronx.
-const BBOX = { lonMin: -74.20, lonMax: -73.72, latMin: 40.56, latMax: 40.92 };
+// Region (lon/lat) — all five boroughs incl. Staten Island, plus NJ (Newark).
+const BBOX = { lonMin: -74.28, lonMax: -73.68, latMin: 40.48, latMax: 40.93 };
 const Z = 11;
-const W = 256, H = 256;
+const W = 300, H = 300;
 
 const n = 2 ** Z;
 const lon2px = (lon) => ((lon + 180) / 360) * 256 * n;
