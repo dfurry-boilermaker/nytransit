@@ -1,8 +1,9 @@
-// Fetch real building footprints (OpenStreetMap via Overpass) for the Manhattan
-// core, extrude-ready, capped for performance. Heights come from OSM height /
-// building:levels tags where present, else a modest default.
+// Real NYC building footprints WITH real roof heights, from NYC Open Data
+// "Building Footprints" (5zhs-2jue): height_roof + ground_elevation (feet),
+// the_geom (lon/lat MultiPolygon). We keep the tallest N so the skyline is
+// accurate rather than a uniform field of boxes.
 //
-// Output: public/data/buildings.json  { count, buildings:[{ring:[[x,z]...], base, h}] }
+// Output: public/data/buildings.json  { count, dropped, buildings:[{ring,base,h}] }
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -16,8 +17,9 @@ const LAT0 = 40.758, LON0 = -73.978;
 const M_PER_LAT = 111320, M_PER_LON = 111320 * Math.cos((LAT0 * Math.PI) / 180);
 const projX = (lon) => (lon - LON0) * M_PER_LON;
 const projZ = (lat) => -(lat - LAT0) * M_PER_LAT;
+const FT = 0.3048;
 
-// terrain sampler (base each building on the real ground)
+// base each building on the same DEM the app renders, so they sit on the ground
 const TERRAIN = JSON.parse(readFileSync(join(__dirname, '..', 'public', 'data', 'terrain.json'), 'utf8'));
 function ground(x, z) {
   const { xMin, xMax, zMin, zMax, W, H, elev } = TERRAIN;
@@ -31,65 +33,63 @@ function ground(x, z) {
   return Math.max(0, (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz);
 }
 
-const CACHE = '/tmp/osm_buildings.json';
-const BBOX = '40.700,-74.022,40.772,-73.940'; // south,west,north,east — Lower + Midtown Manhattan
-const CAP = 3000;
+// Manhattan core: Battery up to ~72nd St (the harbor-facing skyline).
+const N = 40.775, W_ = -74.022, S = 40.700, E = -73.940;
+const CAP = 14000; // keep the tallest this many
+const CACHE = '/tmp/nyc_buildings.json';
 
 if (!existsSync(CACHE)) {
-  const q = `[out:json][timeout:120];(way[building](${BBOX}););out geom;`;
-  const qfile = '/tmp/overpass_query.txt';
-  writeFileSync(qfile, q);
-  console.log('Querying Overpass for buildings…');
-  const endpoints = [
-    'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-  ];
+  const url = 'https://data.cityofnewyork.us/resource/5zhs-2jue.json';
+  const where = `height_roof>25 AND within_box(the_geom,${N},${W_},${S},${E})`;
+  const cmd = `curl -sSL -m 240 --compressed -G "${url}"` +
+    ` --data-urlencode '$select=the_geom,height_roof'` +
+    ` --data-urlencode '$where=${where}'` +
+    ` --data-urlencode '$limit=80000' -o "${CACHE}"`;
+  console.log('Querying NYC building footprints…');
   let ok = false;
-  for (const ep of endpoints) {
+  for (let a = 0; a < 3; a++) {
     try {
-      execSync(`curl -sSL -m 180 --data-urlencode "data@${qfile}" "${ep}" -o "${CACHE}"`);
+      execSync(cmd);
       const t = readFileSync(CACHE, 'utf8');
-      if (t.includes('"elements"')) { ok = true; break; }
-    } catch { /* try next */ }
+      if (t.trim().startsWith('[')) { ok = true; break; }
+    } catch { /* retry */ }
   }
-  if (!ok) throw new Error('Overpass fetch failed');
+  if (!ok) throw new Error('NYC building fetch failed');
 }
 
-const osm = JSON.parse(readFileSync(CACHE, 'utf8'));
-console.log(`  ${osm.elements.length} raw ways`);
+const rows = JSON.parse(readFileSync(CACHE, 'utf8'));
+console.log(`  ${rows.length} raw buildings`);
 
-function heightOf(tags) {
-  if (!tags) return null;
-  if (tags.height) { const h = parseFloat(tags.height); if (h > 0) return h; }
-  if (tags['building:levels']) { const l = parseFloat(tags['building:levels']); if (l > 0) return l * 3.5; }
-  return null;
-}
-
-function shoelaceArea(pts) {
+function shoelace(pts) {
   let a = 0;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += (pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1]);
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j][0] * pts[i][1] - pts[i][0] * pts[j][1];
   return Math.abs(a) / 2;
 }
 
 let builds = [];
-for (const el of osm.elements) {
-  if (!el.geometry || el.geometry.length < 4) continue;
-  const ring = el.geometry.map((g) => [projX(g.lon), projZ(g.lat)]);
-  // drop duplicate closing point
+for (const r of rows) {
+  const h = parseFloat(r.height_roof) * FT; // ft -> m
+  if (!(h > 3)) continue;
+  const g = r.the_geom;
+  if (!g || g.type !== 'MultiPolygon') continue;
+  const outer = g.coordinates[0][0];
+  if (!outer || outer.length < 4) continue;
+  const ring = outer.map(([lon, lat]) => [projX(lon), projZ(lat)]);
   if (ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]) ring.pop();
   if (ring.length < 3) continue;
-  const area = shoelaceArea(ring);
-  if (area < 120) continue; // skip tiny footprints (perf)
-  let h = heightOf(el.tags);
-  if (h == null) h = Math.min(60, 8 + Math.sqrt(area) * 0.6); // rough fallback from footprint size
+  const area = shoelace(ring);
+  if (area < 60) continue;
   const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
   const cz = ring.reduce((s, p) => s + p[1], 0) / ring.length;
-  builds.push({ ring: ring.map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]), base: +ground(cx, cz).toFixed(1), h: +h.toFixed(1), area });
+  builds.push({ ring: ring.map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]), base: +ground(cx, cz).toFixed(1), h: +h.toFixed(1) });
 }
 
-// keep the most prominent (largest footprint) for a mobile-friendly count
-builds.sort((a, b) => b.area - a.area);
-builds = builds.slice(0, CAP).map(({ area, ...b }) => b);
+const total = builds.length;
+builds.sort((a, b) => b.h - a.h);      // tallest first -> real skyline
+const dropped = Math.max(0, total - CAP);
+builds = builds.slice(0, CAP);
 
-writeFileSync(OUT, JSON.stringify({ count: builds.length, buildings: builds }));
-console.log(`Wrote ${OUT}  (${(readFileSync(OUT).length / 1024).toFixed(0)} KB)  ${builds.length} buildings`);
+writeFileSync(OUT, JSON.stringify({ count: builds.length, dropped, buildings: builds }));
+const kb = (readFileSync(OUT).length / 1024).toFixed(0);
+console.log(`Wrote ${OUT}  (${kb} KB)  ${builds.length} buildings kept, ${dropped} shorter ones dropped`);
+console.log(`  tallest: ${builds[0].h} m, median-ish: ${builds[Math.floor(builds.length / 2)].h} m`);

@@ -16,16 +16,12 @@
       <p>The subway at its real depth · from the harbor</p>
     </header>
 
-    <section id="legend">
-      <h2>Elevation vs sea level</h2>
-      <div class="scale"><span>+150 m</span><div class="bar"></div><span>−40 m</span></div>
-      <ul class="depthkey">
-        <li><i style="background:#ffd24a"></i> elevated / above ground</li>
-        <li><i style="background:#6fe0a6"></i> shallow (cut &amp; cover)</li>
-        <li><i style="background:#4aa3ff"></i> deep bored</li>
-        <li><i style="background:#c56bff"></i> under-river tube</li>
-      </ul>
-    </section>
+    <div id="intro">
+      <div class="phase" id="intro-phase">Surveying the route</div>
+      <div class="year" id="intro-year">1904</div>
+      <div class="pbar"><div id="intro-fill"></div></div>
+      <div class="sub">building the subway, line by line</div>
+    </div>
 
     <div id="tooltip" hidden></div>
 
@@ -36,6 +32,7 @@
         <button id="view-top">Top</button>
         <button id="view-cut">Cross-section</button>
       </div>
+      <div class="sep"></div>
       <div class="depth">
         <label for="ve">Depth <b id="ve-val">50×</b></label>
         <input type="range" id="ve" min="1" max="100" step="1" value="50" />

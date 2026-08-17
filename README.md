@@ -12,16 +12,18 @@ appear first, then the BMT, then the IND, over about ten seconds.
 
 ## What you're looking at
 
-- **Terrain** — real elevation (DEM), shaded like a topographic relief map. NYC's
-  hills matter: Washington Heights sits on a ridge ~60 m up, which is why the
-  191 St station is ~173 ft below the street yet still *above* sea level.
+- **Terrain** — real elevation (DEM) rendered as a **grayscale stepped-contour
+  relief** so the colored lines pop. NYC's hills matter: Washington Heights sits
+  on a ridge ~60 m up, which is why 191 St is ~173 ft below the street yet still
+  *above* sea level. Bright sky above the waterline, deep blue below.
 - **Subway lines** — real MTA route geometry and official colors, draped at each
   station's real structure depth and diving into the under-river tubes.
 - **PATH** — the trans-Hudson tubes to Jersey City, Hoboken and Newark
   (dashed cyan), descending ~97 ft below sea level mid-river.
 - **Stations** — colored by their elevation vs. sea level. Hover (or tap) for
   lines, structure, depth below street, and elevation.
-- **Buildings** — real footprints (OpenStreetMap) extruded above ground.
+- **Buildings** — real footprints with **real roof heights** (NYC Open Data),
+  the tallest ~14,000 in the Manhattan core, so the skyline is accurate.
 - **Depth exaggeration** — a slider (default 50×) applied to *depths* so the
   underground story reads at a glance; terrain and buildings stay believable.
 
@@ -60,7 +62,7 @@ node scripts/build-data.mjs        # MTA + GTFS + PATH     -> transit.json
 - MTA Subway Stations (data.ny.gov) — structure type, coordinates, routes
 - MTA GTFS static feed — line shapes and official colors
 - Terrarium DEM elevation tiles (AWS `elevation-tiles-prod`)
-- OpenStreetMap (via Overpass) — building footprints
+- NYC Open Data Building Footprints (`5zhs-2jue`) — footprints + roof heights
 - Depths — Wikipedia (deep stations & river tunnels) + a cut-and-cover heuristic
 
 Depths, ground elevations and building heights are **approximate** — this is a

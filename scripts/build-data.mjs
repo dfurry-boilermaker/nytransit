@@ -448,6 +448,7 @@ const out = {
       'MTA Subway Stations (data.ny.gov 39hk-dx4f) — structure type, coordinates, routes',
       'MTA GTFS static feed — line shapes, route colors',
       'Terrain: Terrarium DEM elevation tiles (AWS elevation-tiles-prod)',
+      'Buildings: NYC Open Data Building Footprints (5zhs-2jue) — real roof heights',
       'Borough coastline: codeforgermany/click_that_hood NYC boroughs GeoJSON',
       'PATH: hand-built from real station coordinates; Hudson tube depth ~97 ft below sea level',
       'Depths: Wikipedia (191/190/181/168 St, 34 St-Hudson Yards, Roosevelt Island, Joralemon/60th/63rd St tunnels, Downtown/Uptown Hudson Tubes) + cut-and-cover heuristic',
