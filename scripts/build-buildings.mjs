@@ -89,6 +89,38 @@ builds.sort((a, b) => b.h - a.h);      // tallest first -> real skyline
 const dropped = Math.max(0, total - CAP);
 builds = builds.slice(0, CAP);
 
+// --- New Jersey waterfront (OSM): Jersey City, Hoboken, Weehawken skylines ---
+const NJ_CACHE = '/tmp/nj_buildings.json';
+const NJ_BBOX = '40.700,-74.090,40.790,-74.010'; // S,W,N,E
+if (!existsSync(NJ_CACHE)) {
+  const q = `[out:json][timeout:120];(way[building](${NJ_BBOX}););out geom;`;
+  writeFileSync('/tmp/nj_q.txt', q);
+  for (const ep of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+    try { execSync(`curl -sSL -m 180 --data-urlencode "data@/tmp/nj_q.txt" "${ep}" -o "${NJ_CACHE}"`); if (readFileSync(NJ_CACHE, 'utf8').includes('"elements"')) break; } catch { /* retry */ }
+  }
+}
+let nj = [];
+try {
+  const osm = JSON.parse(readFileSync(NJ_CACHE, 'utf8'));
+  for (const el of osm.elements) {
+    if (!el.geometry || el.geometry.length < 4) continue;
+    const ring = el.geometry.map((g) => [projX(g.lon), projZ(g.lat)]);
+    if (ring.length > 1 && ring[0][0] === ring.at(-1)[0] && ring[0][1] === ring.at(-1)[1]) ring.pop();
+    if (ring.length < 3) continue;
+    const area = shoelace(ring);
+    if (area < 90) continue;
+    const t = el.tags || {};
+    let h = t.height ? parseFloat(t.height) : (t['building:levels'] ? parseFloat(t['building:levels']) * 3.5 : null);
+    if (!h || !(h > 0)) h = Math.min(38, 6 + Math.sqrt(area) * 0.5);
+    const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length, cz = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+    nj.push({ ring: ring.map(([x, z]) => [+x.toFixed(1), +z.toFixed(1)]), base: +ground(cx, cz).toFixed(1), h: +h.toFixed(1) });
+  }
+} catch { console.warn('NJ building fetch unavailable'); }
+nj.sort((a, b) => b.h - a.h);
+nj = nj.slice(0, 3500);
+console.log(`  New Jersey buildings: ${nj.length}`);
+builds = builds.concat(nj);
+
 writeFileSync(OUT, JSON.stringify({ count: builds.length, dropped, buildings: builds }));
 const kb = (readFileSync(OUT).length / 1024).toFixed(0);
 console.log(`Wrote ${OUT}  (${kb} KB)  ${builds.length} buildings kept, ${dropped} shorter ones dropped`);

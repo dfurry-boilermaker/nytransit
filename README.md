@@ -27,8 +27,9 @@ appear first, then the BMT, then the IND, over about ten seconds.
   under the riverbeds.
 - **Stations** — colored by their elevation vs. sea level. Hover (or tap) for
   lines, structure, depth below street, and elevation.
-- **Buildings** — real footprints with **real roof heights** (NYC Open Data),
-  the tallest ~14,000 in the Manhattan core, so the skyline is accurate.
+- **Buildings** — real footprints with **real roof heights**: the tallest
+  ~14,000 in the Manhattan core (NYC Open Data) plus the **Jersey City / Hoboken
+  skyline** (OpenStreetMap), so both banks of the Hudson are accurate.
 - **Depth exaggeration** — a slider (default 50×) applied to *depths* so the
   underground story reads at a glance; terrain and buildings stay believable.
 
@@ -57,9 +58,10 @@ source (requires network):
 
 ```bash
 npm run data       # or run individually:
-node scripts/build-terrain.mjs     # DEM elevation tiles  -> terrain.json
-node scripts/build-buildings.mjs   # OSM footprints       -> buildings.json
-node scripts/build-data.mjs        # MTA + GTFS + PATH     -> transit.json
+node scripts/build-terrain.mjs     # DEM elevation tiles         -> terrain.json
+node scripts/build-buildings.mjs   # NYC + NJ building footprints -> buildings.json
+node scripts/build-bridges.mjs     # OSM bridge & tram geometry   -> crossings.json
+node scripts/build-data.mjs        # MTA + GTFS + PATH            -> transit.json
 ```
 
 ## Data sources
@@ -68,6 +70,7 @@ node scripts/build-data.mjs        # MTA + GTFS + PATH     -> transit.json
 - MTA GTFS static feed — line shapes and official colors
 - Terrarium DEM elevation tiles (AWS `elevation-tiles-prod`)
 - NYC Open Data Building Footprints (`5zhs-2jue`) — footprints + roof heights
+- OpenStreetMap (via Overpass) — New Jersey buildings, bridge & tram geometry
 - Depths — Wikipedia (deep stations & river tunnels) + a cut-and-cover heuristic
 
 Depths, ground elevations and building heights are **approximate** — this is a

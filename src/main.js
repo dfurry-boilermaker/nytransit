@@ -85,10 +85,11 @@ const _tmpT = new THREE.Vector3();
 
 // ===========================================================================
 async function boot() {
-  const [data, terrain, buildings] = await Promise.all([
+  const [data, terrain, buildings, crossings] = await Promise.all([
     fetch('./data/transit.json').then((r) => r.json()),
     fetch('./data/terrain.json').then((r) => r.json()).catch(() => null),
     fetch('./data/buildings.json').then((r) => r.json()).catch(() => null),
+    fetch('./data/crossings.json').then((r) => r.json()).catch(() => null),
   ]);
   META = data.meta;
 
@@ -99,7 +100,7 @@ async function boot() {
   buildSubway(data.routes);
   buildPath(data.path || []);
   buildBuses(data.buses);
-  buildCrossings(data.crossings || []);
+  buildCrossings(crossings || data.crossings || []);
   buildStations(data.stations);
 
   introEls = { root: document.getElementById('intro'), phase: document.getElementById('intro-phase'), year: document.getElementById('intro-year'), fill: document.getElementById('intro-fill') };
@@ -144,19 +145,25 @@ function buildTerrain(t) {
   geo.rotateX(-Math.PI / 2);
   geo.translate((xMin + xMax) / 2, 0, (zMin + zMax) / 2);
   geo.computeVertexNormals();
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide });
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = 'attribute float aElev;\nvarying float vElev;\n' +
       sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vElev = aElev;');
     sh.fragmentShader = 'varying float vElev;\n' +
       sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-        float g = pow(clamp((vElev + 16.0) / 195.0, 0.0, 1.0), 0.82);
-        vec3 grey = mix(vec3(0.13,0.15,0.19), vec3(0.95,0.96,0.99), g);
+        // LAND: bright grayscale relief with contour lines
+        float g = pow(clamp(vElev / 175.0, 0.0, 1.0), 0.8);
+        vec3 land = mix(vec3(0.5,0.52,0.55), vec3(0.97,0.98,1.0), g);
         float e2 = fract(vElev / 6.0);
         float edge = min(e2, 1.0 - e2);
         float line = smoothstep(0.0, 0.08, edge);
-        grey *= mix(0.58, 1.0, line);
-        diffuseColor.rgb = grey;`);
+        land *= mix(0.62, 1.0, line);
+        // WATER: clearly blue, darkening with depth (the riverbeds)
+        vec3 water = mix(vec3(0.10,0.45,0.63), vec3(0.03,0.16,0.30), clamp(-vElev/24.0, 0.0, 1.0));
+        float isWater = smoothstep(0.8, -0.8, vElev);
+        diffuseColor.rgb = mix(land, water, isWater);
+        diffuseColor.a = mix(0.9, 0.5, isWater); // land opaque, water translucent
+        `);
   };
   earthTop = new THREE.Mesh(geo, mat);
   earthTop.renderOrder = -2;
@@ -221,7 +228,7 @@ function buildCoastline(boroughs) {
     flat.push(ring[0][0], 1.0, ring[0][1]); // close the loop
     const geo = new LineGeometry();
     geo.setPositions(flat);
-    const mat = new LineMaterial({ color: 0xeaf6ff, linewidth: 2.4, transparent: true, opacity: 0.92, worldUnits: false });
+    const mat = new LineMaterial({ color: 0xffffff, linewidth: 3.2, transparent: true, opacity: 1, worldUnits: false });
     mat.resolution.copy(resolution);
     lineMaterials.push(mat);
     g.add(new Line2(geo, mat));
